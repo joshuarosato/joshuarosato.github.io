@@ -1,5 +1,5 @@
 // sw.js - Instant failover Service Worker
-const MAIN_DOMAIN = 'example.com';
+const MAIN_DOMAIN = 'joshuarosato.com';
 const PING_ENDPOINT = `https://${MAIN_DOMAIN}/robots.txt`;
 
 self.addEventListener('install', event => {
