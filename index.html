@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Failover Test - example.com</title>
+  
+  <!-- Canonical points to main site -->
+  <link rel="canonical" href="https://example.com/" />
+  
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    .status {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      font-family: monospace;
+    }
+    .status.main { background: #d4edda; color: #155724; }
+    .status.mirror { background: #f8d7da; color: #721c24; }
+    .status.checking { background: #fff3cd; color: #856404; }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Checking...</div>
+  
+  <h1>🚀 Failover Test Site</h1>
+  <p>This is your <strong>mirror site</strong>. It will redirect to <code>example.com</code> if available.</p>
+  
+  <h2>Current Status:</h2>
+  <ul id="debug"></ul>
+  
+  <h2>Test Buttons:</h2>
+  <button onclick="testRedirect()">🧪 Test Redirect</button>
+  <button onclick="testPing()">🔍 Test Ping</button>
+  
+  <hr>
+  <footer>
+    <p>Deploy this exact file to GitHub Pages, Netlify, etc.</p>
+  </footer>
+
+  <!-- Service Worker Registration -->
+  <script>
+    const MAIN_DOMAIN = 'example.com';
+    const PING_ENDPOINT = `https://${MAIN_DOMAIN}/ping`;
+    
+    // Status UI
+    const statusEl = document.getElementById('status');
+    const debugEl = document.getElementById('debug');
+    
+    function updateStatus(text, className) {
+      statusEl.textContent = text;
+      statusEl.className = `status ${className}`;
+    }
+    
+    function addDebug(text) {
+      const li = document.createElement('li');
+      li.textContent = `${new Date().toISOString()}: ${text}`;
+      debugEl.appendChild(li);
+    }
+
+    // Test functions
+    window.testPing = async () => {
+      updateStatus('Testing ping...', 'checking');
+      try {
+        const start = performance.now();
+        const res = await fetch(PING_ENDPOINT, { 
+          method: 'HEAD', 
+          cache: 'no-cache', 
+          signal: AbortSignal.timeout(3000) 
+        });
+        const duration = performance.now() - start;
+        addDebug(`✅ Ping: ${res.status} (${duration.toFixed(0)}ms)`);
+        updateStatus('Main site UP!', 'main');
+      } catch (e) {
+        addDebug(`❌ Ping failed: ${e.message}`);
+        updateStatus('Main site DOWN - using mirror', 'mirror');
+      }
+    };
+
+    window.testRedirect = () => {
+      const mainUrl = `https://${MAIN_DOMAIN}${window.location.pathname}`;
+      addDebug(`Redirecting to: ${mainUrl}`);
+      window.location.href = mainUrl;
+    };
+
+    // Service Worker (if supported)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        addDebug('✅ Service Worker registered');
+      }).catch(err => {
+        addDebug('❌ Service Worker failed: ' + err.message);
+        // Fallback to client-side check
+        checkMainSite();
+      });
+    } else {
+      checkMainSite();
+    }
+
+    // Client-side fallback checker
+    async function checkMainSite() {
+      updateStatus('Checking main site...', 'checking');
+      addDebug(`Current hostname: ${window.location.hostname}`);
+      
+      // Skip if already on main domain
+      if (window.location.hostname === MAIN_DOMAIN) {
+        updateStatus('Already on main site', 'main');
+        return;
+      }
+
+      try {
+        const res = await fetch(PING_ENDPOINT, {
+          method: 'HEAD',
+          cache: 'no-cache',
+          signal: AbortSignal.timeout(3000)
+        });
+        
+        if (res.ok) {
+          updateStatus('Main site UP - redirecting...', 'main');
+          addDebug('Redirecting to main site...');
+          setTimeout(() => {
+            window.location.replace(`https://${MAIN_DOMAIN}${window.location.pathname}${window.location.search}`);
+          }, 100);
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (error) {
+        updateStatus('Using mirror site', 'mirror');
+        addDebug(`Main site unreachable: ${error.message}`);
+      }
+    }
+
+    // Auto-check on load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkMainSite);
+    } else {
+      checkMainSite();
+    }
+  </script>
+</body>
+</html>
